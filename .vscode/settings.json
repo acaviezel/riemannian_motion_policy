@@ -1,5 +1,30 @@
 {
     "files.associations": {
         "cassert": "cpp"
-    }
+    },
+    "ROS2.distro": "humble",
+    "python.autoComplete.extraPaths": [
+        "/home/lucas/franka_ros2_ws/install/robot_trajectory_logger/lib/python3.10/site-packages",
+        "/home/lucas/franka_ros2_ws/install/franka_rl_bridge/lib/python3.10/site-packages",
+        "/home/lucas/franka_ros2_ws/install/rl_bridge_messages/local/lib/python3.10/dist-packages",
+        "/home/lucas/franka_ros2_ws/install/messages_fr3/local/lib/python3.10/dist-packages",
+        "/home/lucas/franka_ros2_ws/install/inertia_estimation/lib/python3.10/site-packages",
+        "/home/lucas/franka_ros2_ws/install/grasp_sam6d/lib/python3.10/site-packages",
+        "/home/lucas/franka_ros2_ws/install/franka_gripper/local/lib/python3.10/dist-packages",
+        "/home/lucas/franka_ros2_ws/install/franka_msgs/local/lib/python3.10/dist-packages",
+        "/opt/ros/humble/lib/python3.10/site-packages",
+        "/opt/ros/humble/local/lib/python3.10/dist-packages"
+    ],
+    "python.analysis.extraPaths": [
+        "/home/lucas/franka_ros2_ws/install/robot_trajectory_logger/lib/python3.10/site-packages",
+        "/home/lucas/franka_ros2_ws/install/franka_rl_bridge/lib/python3.10/site-packages",
+        "/home/lucas/franka_ros2_ws/install/rl_bridge_messages/local/lib/python3.10/dist-packages",
+        "/home/lucas/franka_ros2_ws/install/messages_fr3/local/lib/python3.10/dist-packages",
+        "/home/lucas/franka_ros2_ws/install/inertia_estimation/lib/python3.10/site-packages",
+        "/home/lucas/franka_ros2_ws/install/grasp_sam6d/lib/python3.10/site-packages",
+        "/home/lucas/franka_ros2_ws/install/franka_gripper/local/lib/python3.10/dist-packages",
+        "/home/lucas/franka_ros2_ws/install/franka_msgs/local/lib/python3.10/dist-packages",
+        "/opt/ros/humble/lib/python3.10/site-packages",
+        "/opt/ros/humble/local/lib/python3.10/dist-packages"
+    ]
 }

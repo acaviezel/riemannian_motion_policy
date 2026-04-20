@@ -13,6 +13,8 @@
 // limitations under the License.
 
 #include <riemannian_motion_policy/riemannian_motion_policy.hpp>
+#include <ament_index_cpp/get_package_share_directory.hpp>
+#include <cstdlib>
 #include <cassert>
 #include <cmath>
 #include <exception>
@@ -33,6 +35,14 @@ std::ostream& operator<<(std::ostream& ostream, const std::array<T, N>& array) {
   std::copy(array.cend() - 1, array.cend(), std::ostream_iterator<T>(ostream));
   ostream << "]";
   return ostream;
+}
+
+template <typename T>
+T yamlValueOr(const YAML::Node& node, const std::string& key, const T& default_value) {
+  if (node && node[key]) {
+    return node[key].as<T>();
+  }
+  return default_value;
 }
 }
 
@@ -243,6 +253,10 @@ void RiemannianMotionPolicy::rmp_cspacetarget(){
       f_c_space_target(i) = kp_c_space_target(i,i) * theta_cspace * diff/abs_diff - kd_c_space_target(i,i) * dq_(i);
     }
   }
+    if (f_obs_tildeEE.cols() <= 1) {
+      A_c_space_target.setZero();
+      return;
+    }
     Eigen::MatrixXd f_obs_head = f_obs_tildeEE.block(0, 1, 3, f_obs_tildeEE.cols() - 1);
 
     Eigen::Vector3d x_dd_d_head = x_dd_des.head<3>(); // dimension 3 x 1
@@ -258,6 +272,25 @@ void RiemannianMotionPolicy::rmp_cspacetarget(){
 
     A_c_space_target = weight_c_space_target * gain  * Eigen::MatrixXd::Identity(7,7) ;
 }
+
+void RiemannianMotionPolicy::rmp_force_controller() {
+  A_force_controller.setZero();
+  f_force_controller.setZero();
+
+  const double low = std::max(0.0, force_controller_low_torque_threshold);
+  const double high = std::max(low + 1e-6, force_controller_high_torque_threshold);
+  const double midpoint = 0.5 * (low + high);
+  const double slope = force_controller_sigmoid_steepness / (high - low);
+
+  for (size_t i = 0; i < 7; ++i) {
+    const double torque_abs = std::abs(tau_ext_hat_filtered_M(i));
+    const double activation = 1.0 / (1.0 + std::exp(-slope * (torque_abs - midpoint)));
+    const double inertia = weight_force_controller * force_controller_max_inertia * activation;
+
+    A_force_controller(i, i) = inertia;
+    f_force_controller(i) = tau_ext_hat_filtered_M(i) - force_controller_damping * dq_(i);
+  }
+}
 //get global joint acceleration for torque calculation
 void RiemannianMotionPolicy::get_ddq(){
 
@@ -267,28 +300,51 @@ void RiemannianMotionPolicy::get_ddq(){
   Eigen::MatrixXd A_total = Eigen::MatrixXd::Zero(7, 7);
   Eigen::MatrixXd A_total_inv = Eigen::MatrixXd::Zero(7, 7);
   Eigen::VectorXd f_total = Eigen::VectorXd::Zero(7);
+  const double obstacle_on = use_obstacle_avoidance ? 1.0 : 0.0;
+  const double joint_limits_on = use_joint_limits ? 1.0 : 0.0;
+  const double joint_velocity_on = use_joint_velocity_limits ? 1.0 : 0.0;
+  const double c_space_on = use_c_space_target ? 1.0 : 0.0;
+  const double attractor_on = use_attractor ? 1.0 : 0.0;
+  const double damping_on = use_global_damping ? 1.0 : 0.0;
+  const double force_on = use_force_controller ? 1.0 : 0.0;
+
   for (int i = 0; i < number_obstacles; i++) {
-    A_total += jacobian2_obstacle.block(0, 7 * i, 6, 7).transpose() * A_obs_tilde2.block(0, 6 * i, 6, 6) * jacobian2_obstacle.block(0, 7 * i, 6, 7);
-    f_total += jacobian2_obstacle.block(0, 7 * i, 6, 7).transpose() * A_obs_tilde2.block(0, 6 * i, 6, 6) * f_obs_tilde2.col(i);
-    A_total += jacobian3_obstacle.block(0, 7 * i, 6, 7).transpose() * A_obs_tilde3.block(0, 6 * i, 6, 6) * jacobian3_obstacle.block(0, 7 * i, 6, 7);
-    f_total += jacobian3_obstacle.block(0, 7 * i, 6, 7).transpose() * A_obs_tilde3.block(0, 6 * i, 6, 6) * f_obs_tilde3.col(i);
-    A_total += jacobian4_obstacle.block(0, 7 * i, 6, 7).transpose() * A_obs_tilde4.block(0, 6 * i, 6, 6) * jacobian4_obstacle.block(0, 7 * i, 6, 7);
-    f_total += jacobian4_obstacle.block(0, 7 * i, 6, 7).transpose() * A_obs_tilde4.block(0, 6 * i, 6, 6) * f_obs_tilde4.col(i);
-    A_total += jacobian5_obstacle.block(0, 7 * i, 6, 7).transpose() * A_obs_tilde5.block(0, 6 * i, 6, 6) * jacobian5_obstacle.block(0, 7 * i, 6, 7);
-    f_total += jacobian5_obstacle.block(0, 7 * i, 6, 7).transpose() * A_obs_tilde5.block(0, 6 * i, 6, 6) * f_obs_tilde5.col(i);
-    A_total += jacobian6_obstacle.block(0, 7 * i, 6, 7).transpose() * A_obs_tilde6.block(0, 6 * i, 6, 6) * jacobian6_obstacle.block(0, 7 * i, 6, 7);
-    f_total += jacobian6_obstacle.block(0, 7 * i, 6, 7).transpose() * A_obs_tilde6.block(0, 6 * i, 6, 6) * f_obs_tilde6.col(i);
-    A_total += jacobian7_obstacle.block(0, 7 * i, 6, 7).transpose() * A_obs_tilde7.block(0, 6 * i, 6, 6) * jacobian7_obstacle.block(0, 7 * i, 6, 7);
-    f_total += jacobian7_obstacle.block(0, 7 * i, 6, 7).transpose() * A_obs_tilde7.block(0, 6 * i, 6, 6) * f_obs_tilde7.col(i);
-    A_total += jacobianhand_obstacle.block(0, 7 * i, 6, 7).transpose() * A_obs_tildehand.block(0, 6 * i, 6, 6) * jacobianhand_obstacle.block(0, 7 * i, 6, 7);
-    f_total += jacobianhand_obstacle.block(0, 7 * i, 6, 7).transpose() * A_obs_tildehand.block(0, 6 * i, 6, 6) * f_obs_tildehand.col(i);
-    A_total += jacobianEE_obstacle.block(0, 7 * i, 6, 7).transpose() * A_obs_tildeEE.block(0, 6 * i, 6, 6) * jacobianEE_obstacle.block(0, 7 * i, 6, 7);
-    f_total += jacobianEE_obstacle.block(0, 7 * i, 6, 7).transpose() * A_obs_tildeEE.block(0, 6 * i, 6, 6) * f_obs_tildeEE.col(i);
+    A_total += obstacle_on * jacobian2_obstacle.block(0, 7 * i, 6, 7).transpose() * A_obs_tilde2.block(0, 6 * i, 6, 6) * jacobian2_obstacle.block(0, 7 * i, 6, 7);
+    f_total += obstacle_on * jacobian2_obstacle.block(0, 7 * i, 6, 7).transpose() * A_obs_tilde2.block(0, 6 * i, 6, 6) * f_obs_tilde2.col(i);
+    A_total += obstacle_on * jacobian3_obstacle.block(0, 7 * i, 6, 7).transpose() * A_obs_tilde3.block(0, 6 * i, 6, 6) * jacobian3_obstacle.block(0, 7 * i, 6, 7);
+    f_total += obstacle_on * jacobian3_obstacle.block(0, 7 * i, 6, 7).transpose() * A_obs_tilde3.block(0, 6 * i, 6, 6) * f_obs_tilde3.col(i);
+    A_total += obstacle_on * jacobian4_obstacle.block(0, 7 * i, 6, 7).transpose() * A_obs_tilde4.block(0, 6 * i, 6, 6) * jacobian4_obstacle.block(0, 7 * i, 6, 7);
+    f_total += obstacle_on * jacobian4_obstacle.block(0, 7 * i, 6, 7).transpose() * A_obs_tilde4.block(0, 6 * i, 6, 6) * f_obs_tilde4.col(i);
+    A_total += obstacle_on * jacobian5_obstacle.block(0, 7 * i, 6, 7).transpose() * A_obs_tilde5.block(0, 6 * i, 6, 6) * jacobian5_obstacle.block(0, 7 * i, 6, 7);
+    f_total += obstacle_on * jacobian5_obstacle.block(0, 7 * i, 6, 7).transpose() * A_obs_tilde5.block(0, 6 * i, 6, 6) * f_obs_tilde5.col(i);
+    A_total += obstacle_on * jacobian6_obstacle.block(0, 7 * i, 6, 7).transpose() * A_obs_tilde6.block(0, 6 * i, 6, 6) * jacobian6_obstacle.block(0, 7 * i, 6, 7);
+    f_total += obstacle_on * jacobian6_obstacle.block(0, 7 * i, 6, 7).transpose() * A_obs_tilde6.block(0, 6 * i, 6, 6) * f_obs_tilde6.col(i);
+    A_total += obstacle_on * jacobian7_obstacle.block(0, 7 * i, 6, 7).transpose() * A_obs_tilde7.block(0, 6 * i, 6, 6) * jacobian7_obstacle.block(0, 7 * i, 6, 7);
+    f_total += obstacle_on * jacobian7_obstacle.block(0, 7 * i, 6, 7).transpose() * A_obs_tilde7.block(0, 6 * i, 6, 6) * f_obs_tilde7.col(i);
+    A_total += obstacle_on * jacobianhand_obstacle.block(0, 7 * i, 6, 7).transpose() * A_obs_tildehand.block(0, 6 * i, 6, 6) * jacobianhand_obstacle.block(0, 7 * i, 6, 7);
+    f_total += obstacle_on * jacobianhand_obstacle.block(0, 7 * i, 6, 7).transpose() * A_obs_tildehand.block(0, 6 * i, 6, 6) * f_obs_tildehand.col(i);
+    A_total += obstacle_on * jacobianEE_obstacle.block(0, 7 * i, 6, 7).transpose() * A_obs_tildeEE.block(0, 6 * i, 6, 6) * jacobianEE_obstacle.block(0, 7 * i, 6, 7);
+    f_total += obstacle_on * jacobianEE_obstacle.block(0, 7 * i, 6, 7).transpose() * A_obs_tildeEE.block(0, 6 * i, 6, 6) * f_obs_tildeEE.col(i);
   }
-  
-  A_total += A_joint_limits_upper + A_joint_limits_lower + A_joint_velocity + A_c_space_target + jacobian.transpose() * A_attract * jacobian + jacobian.transpose() * A_dampingEE * jacobian; 
-  f_total += A_joint_limits_upper * f_joint_limits_upper + A_joint_limits_lower * f_joint_limits_lower + 
-             A_joint_velocity * f_joint_velocity + A_c_space_target * f_c_space_target + jacobian.transpose() * A_attract * x_dd_des + jacobian.transpose() *A_dampingEE *f_dampingEE;
+
+  A_total += joint_limits_on * (A_joint_limits_upper + A_joint_limits_lower);
+  f_total += joint_limits_on * (A_joint_limits_upper * f_joint_limits_upper + A_joint_limits_lower * f_joint_limits_lower);
+
+  A_total += joint_velocity_on * A_joint_velocity;
+  f_total += joint_velocity_on * (A_joint_velocity * f_joint_velocity);
+
+  A_total += c_space_on * A_c_space_target;
+  f_total += c_space_on * (A_c_space_target * f_c_space_target);
+
+  A_total += attractor_on * jacobian.transpose() * A_attract * jacobian;
+  f_total += attractor_on * jacobian.transpose() * A_attract * x_dd_des;
+
+  A_total += damping_on * jacobian.transpose() * A_dampingEE * jacobian;
+  f_total += damping_on * jacobian.transpose() * A_dampingEE * f_dampingEE;
+
+  A_total += force_on * A_force_controller;
+  f_total += force_on * (A_force_controller * f_force_controller);
+
   pseudoInverse(A_total, A_total_inv); // get pseudoinverse for pullback 
   ddq_ =  A_total_inv * f_total;
 }
@@ -387,56 +443,101 @@ CallbackReturn RiemannianMotionPolicy::on_configure(const rclcpp_lifecycle::Stat
 CallbackReturn RiemannianMotionPolicy::on_activate(
   const rclcpp_lifecycle::State& /*previous_state*/) {
   franka_robot_model_->assign_loaned_state_interfaces(state_interfaces_); 
-  //Load parameters from yaml file
-  YAML::Node config = YAML::LoadFile("/home/student/franka_ros2_ws/src/riemannian_motion_policy/src/config.yaml");
+  // Load parameters from yaml file
+  YAML::Node config;
+  std::string config_path;
+  try {
+    config_path = ament_index_cpp::get_package_share_directory("riemannian_motion_policy") + "/config.yaml";
+    config = YAML::LoadFile(config_path);
+  } catch (const std::exception&) {
+    const char* home = std::getenv("HOME");
+    if (home == nullptr) {
+      RCLCPP_ERROR(get_node()->get_logger(), "Could not resolve HOME for fallback config path.");
+      return CallbackReturn::ERROR;
+    }
+    try {
+      config_path = std::string(home) +
+                    "/franka_ros2_ws/src/Riemannian-Motion-Policies-Franka-Emika-Robot/src/config.yaml";
+      config = YAML::LoadFile(config_path);
+    } catch (const std::exception& e) {
+      RCLCPP_ERROR(get_node()->get_logger(), "Failed to load config file: %s", e.what());
+      return CallbackReturn::ERROR;
+    }
+  }
+  RCLCPP_INFO(get_node()->get_logger(), "Loaded RMP config: %s", config_path.c_str());
 
   // Load obstacle avoidance parameters
-  eta_rep = config["obstacle_avoidance"]["eta_rep"].as<double>();
-  mu_rep = config["obstacle_avoidance"]["mu_rep"].as<double>();
-  eta_damp = config["obstacle_avoidance"]["eta_damp"].as<double>();
-  mu_damp = config["obstacle_avoidance"]["mu_damp"].as<double>();
-  epsilon = config["obstacle_avoidance"]["epsilon"].as<double>();
-  weight_obstacle = config["obstacle_avoidance"]["weight_obstacle"].as<double>();
+  const YAML::Node obstacle_cfg = config["obstacle_avoidance"];
+  eta_rep = obstacle_cfg["eta_rep"].as<double>();
+  mu_rep = obstacle_cfg["mu_rep"].as<double>();
+  eta_damp = obstacle_cfg["eta_damp"].as<double>();
+  mu_damp = obstacle_cfg["mu_damp"].as<double>();
+  epsilon = obstacle_cfg["epsilon"].as<double>();
+  weight_obstacle = obstacle_cfg["weight_obstacle"].as<double>();
+  use_obstacle_avoidance = yamlValueOr<bool>(obstacle_cfg, "enabled", true);
 
   // Load attractor parameters
-  alpha_min = config["attractor"]["alpha_min"].as<double>();
-  sigma_a = config["attractor"]["sigma_a"].as<double>();
-  sigma_b = config["attractor"]["sigma_b"].as<double>();
-  b = config["attractor"]["b"].as<double>();
-  sigma_o = config["attractor"]["sigma_o"].as<double>();
-  b_axis = config["attractor"]["b_axis"].as<double>();
-  weight_attractor = config["attractor"]["weight_attractor"].as<double>();
+  const YAML::Node attractor_cfg = config["attractor"];
+  alpha_min = attractor_cfg["alpha_min"].as<double>();
+  sigma_a = attractor_cfg["sigma_a"].as<double>();
+  sigma_b = attractor_cfg["sigma_b"].as<double>();
+  b = attractor_cfg["b"].as<double>();
+  sigma_o = attractor_cfg["sigma_o"].as<double>();
+  b_axis = attractor_cfg["b_axis"].as<double>();
+  weight_attractor = attractor_cfg["weight_attractor"].as<double>();
+  use_attractor = yamlValueOr<bool>(attractor_cfg, "enabled", true);
 
   // Load global damping parameters
-  k_damp = config["global_damping"]["k_damp"].as<double>();
-  weight_damping = config["global_damping"]["weight_damping"].as<double>();
+  const YAML::Node global_damping_cfg = config["global_damping"];
+  k_damp = global_damping_cfg["k_damp"].as<double>();
+  weight_damping = global_damping_cfg["weight_damping"].as<double>();
+  use_global_damping = yamlValueOr<bool>(global_damping_cfg, "enabled", true);
 
   // Load velocity limits parameters
-  k_joint_velocity = config["velocity_limits"]["k_joint_velocity"].as<double>();
-  weight_joint_velocity = config["velocity_limits"]["weight_joint_velocity"].as<double>();
+  const YAML::Node velocity_limits_cfg = config["velocity_limits"];
+  k_joint_velocity = velocity_limits_cfg["k_joint_velocity"].as<double>();
+  weight_joint_velocity = velocity_limits_cfg["weight_joint_velocity"].as<double>();
+  use_joint_velocity_limits = yamlValueOr<bool>(velocity_limits_cfg, "enabled", true);
 
   // Load joint limits parameters
-  kp_joint_limits = config["joint_limits"]["kp_joint_limits"].as<double>();
-  kd_joint_limits = config["joint_limits"]["kd_joint_limits"].as<double>();
-  l_m = config["joint_limits"]["metric_length_scale"].as<double>();
-  epsilon_joint_limits = config["joint_limits"]["epsilon_joint_limits"].as<double>();
-  v_m = config["joint_limits"]["metric_velocity_length_scale"].as<double>();
-  l_p = config["joint_limits"]["accel_exploder_length_scale"].as<double>();
-  accel_eps = config["joint_limits"]["accel_eps"].as<double>();
-  weight_joint_limits = config["joint_limits"]["weight_joint_limits"].as<double>();
+  const YAML::Node joint_limits_cfg = config["joint_limits"];
+  kp_joint_limits = joint_limits_cfg["kp_joint_limits"].as<double>();
+  kd_joint_limits = joint_limits_cfg["kd_joint_limits"].as<double>();
+  l_m = joint_limits_cfg["metric_length_scale"].as<double>();
+  epsilon_joint_limits = joint_limits_cfg["epsilon_joint_limits"].as<double>();
+  v_m = joint_limits_cfg["metric_velocity_length_scale"].as<double>();
+  l_p = joint_limits_cfg["accel_exploder_length_scale"].as<double>();
+  accel_eps = joint_limits_cfg["accel_eps"].as<double>();
+  weight_joint_limits = joint_limits_cfg["weight_joint_limits"].as<double>();
+  use_joint_limits = yamlValueOr<bool>(joint_limits_cfg, "enabled", true);
 
   // Load C-space Target parameters
+  const YAML::Node c_space_target_cfg = config["c_space_target"];
   // Read kp_c_space_target into an Eigen::VectorXd
-  std::vector<double> kp_values = config["c_space_target"]["kp_c_space_target"].as<std::vector<double>>();
+  std::vector<double> kp_values = c_space_target_cfg["kp_c_space_target"].as<std::vector<double>>();
   Eigen::VectorXd kp_vector = Eigen::Map<Eigen::VectorXd>(kp_values.data(), kp_values.size());
   // Read kd_c_space_target into an Eigen::VectorXd
-  std::vector<double> kd_values = config["c_space_target"]["kd_c_space_target"].as<std::vector<double>>();
+  std::vector<double> kd_values = c_space_target_cfg["kd_c_space_target"].as<std::vector<double>>();
   Eigen::VectorXd kd_vector = Eigen::Map<Eigen::VectorXd>(kd_values.data(), kd_values.size());
   // Create diagonal matrices
   kp_c_space_target = kp_vector.asDiagonal();
   kd_c_space_target = kd_vector.asDiagonal();
-  theta_cspace = config["c_space_target"]["theta"].as<double>();
-  weight_c_space_target = config["c_space_target"]["weight_c_space_target"].as<double>();
+  theta_cspace = c_space_target_cfg["theta"].as<double>();
+  weight_c_space_target = c_space_target_cfg["weight_c_space_target"].as<double>();
+  use_c_space_target = yamlValueOr<bool>(c_space_target_cfg, "enabled", true);
+
+  // Load force controller primitive parameters
+  const YAML::Node force_controller_cfg = config["force_controller"];
+  use_force_controller = yamlValueOr<bool>(force_controller_cfg, "enabled", true);
+  force_controller_low_torque_threshold =
+      yamlValueOr<double>(force_controller_cfg, "low_torque_threshold", 1.0);
+  force_controller_high_torque_threshold =
+      yamlValueOr<double>(force_controller_cfg, "high_torque_threshold", 5.0);
+  force_controller_max_inertia = yamlValueOr<double>(force_controller_cfg, "max_inertia", 5.0);
+  force_controller_sigmoid_steepness =
+      yamlValueOr<double>(force_controller_cfg, "sigmoid_steepness", 10.0);
+  force_controller_damping = yamlValueOr<double>(force_controller_cfg, "damping", 2.0);
+  weight_force_controller = yamlValueOr<double>(force_controller_cfg, "weight_force_controller", 1.0);
 
 
   // Create the subscriber in the on_activate method
@@ -486,6 +587,8 @@ void RiemannianMotionPolicy::topic_callback(const std::shared_ptr<franka_msgs::m
   // Existing handling of external forces
   O_F_ext_hat_K = convertToStdArray(msg->o_f_ext_hat_k);
   arrayToMatrix(O_F_ext_hat_K, O_F_ext_hat_K_M);
+  tau_ext_hat_filtered = msg->tau_ext_hat_filtered;
+  arrayToMatrix(tau_ext_hat_filtered, tau_ext_hat_filtered_M);
 }
 
 
@@ -668,7 +771,7 @@ controller_interface::return_type RiemannianMotionPolicy::update(const rclcpp::T
   //d_obs1 = calculateNearestPointOnSphere(position, sphere_center, sphere_radius);
   //d_obs1 = d_obs_prev1 * 0.99 + d_obs1 * 0.01;
   Lambda = (jacobian * M.inverse() * jacobian.transpose()).inverse();
-  x_dd_des = (-K_RMP * (error) - D_RMP* jacobian * dq_);
+  x_dd_des = (-K_RMP * (error) - D_RMP * jacobian * dq_);
   A_attract = calculate_target_attraction(error, jacobian);
 
   if (number_obstacles != 0){
@@ -724,15 +827,19 @@ controller_interface::return_type RiemannianMotionPolicy::update(const rclcpp::T
     f_obs_tildeEE = Eigen::MatrixXd::Zero(6,1);
     A_obs_tildeEE = Eigen::MatrixXd::Zero(6,6);
   }
-  auto [f_dampingEE, A_dampingEE] = calculate_global_damping(jacobian.topRows(3));
+
+  const auto damping = calculate_global_damping(jacobian.topRows(3));
+  f_dampingEE = damping.first;
+  A_dampingEE = damping.second;
+
   rmp_joint_limit_avoidance();
   rmp_joint_velocity_limits();
-  if(number_obstacles > 0){
-    if(position_d_target_(0)< 0){
-      q_0(0) = -2.4;
-    }
-    rmp_cspacetarget();
+  if(number_obstacles > 0 && position_d_target_(0) < 0){
+    q_0(0) = -2.4;
   }
+  rmp_cspacetarget();
+  rmp_force_controller();
+
   get_ddq();
   
   // Calculate the desired torque
@@ -741,7 +848,6 @@ controller_interface::return_type RiemannianMotionPolicy::update(const rclcpp::T
   N = (Eigen::MatrixXd::Identity(7, 7) - jacobian_pinv * jacobian);
   
   calculate_tau_friction();
-  calculate_tau_gravity(coriolis, gravity_force_vector, jacobian);
   //tau_gravity_error = tau_gravity - gravity_force_vector;
 
   auto tau_d_placeholder = tau_RMP + coriolis + tau_friction; //add nullspace, friction, gravity and coriolis components to desired torque

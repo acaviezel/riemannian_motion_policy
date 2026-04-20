@@ -15,6 +15,7 @@ option(CHECK_TIDY "Adds clang-tidy tests" OFF)
 
 # find dependencies
 find_package(ament_cmake REQUIRED)
+find_package(ament_index_cpp REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_action REQUIRED)
 find_package(controller_interface REQUIRED)
@@ -56,6 +57,7 @@ ament_target_dependencies(
         controller_interface
         hardware_interface
         pluginlib
+        ament_index_cpp
         rclcpp
         rclcpp_action
         rclcpp_lifecycle
@@ -99,6 +101,11 @@ install(
   DESTINATION share/${PROJECT_NAME}
 )
 
+install(
+        FILES src/config.yaml
+        DESTINATION share/${PROJECT_NAME}
+)
+
 
 if(BUILD_TESTING)
     find_package(ament_cmake_clang_format REQUIRED)
@@ -139,6 +146,7 @@ ament_export_libraries(
 ament_export_dependencies(
         controller_interface
         pluginlib
+        ament_index_cpp
         rclcpp
         rclcpp_lifecycle
         hardware_interface

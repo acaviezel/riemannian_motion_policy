@@ -1,6 +1,30 @@
 # Riemannian Motion Policy (RMP) Controller
 This repository implements Riemannian Motion Policies (RMPs) for the Franka Emika robot. RMPs enable modular motion generation, incorporating policies such as obstacle avoidance and joint limit avoidance. 
 The theoretical foundation is based on the paper ["Riemannian Motion Policies" by Nathan D. Ratliff et al.](https://arxiv.org/abs/1801.02854)
+
+## Primitive Configuration
+The controller reads [src/config.yaml](src/config.yaml) at startup. Each primitive now supports an `enabled` switch and a weight term in its own section.
+
+The added `force_controller` primitive is a joint-space RMP that uses external joint torque estimates. Its inertia is smooth and differentiable, with a sigmoid-shaped activation:
+
+- Inertia is near zero when external torque magnitude is below `low_torque_threshold` (default: `1.0` Nm).
+- Inertia increases with torque and approaches `max_inertia` near `high_torque_threshold`.
+- `sigmoid_steepness` controls how sharp the transition is.
+- `weight_force_controller` scales the primitive contribution in the global RMP sum.
+
+Key config section:
+
+```yaml
+force_controller:
+  enabled: true
+  low_torque_threshold: 1.0
+  high_torque_threshold: 5.0
+  max_inertia: 5.0
+  sigmoid_steepness: 10.0
+  damping: 2.0
+  weight_force_controller: 1.0
+```
+
 ### Prerequisites
 Ensure you have the following installed and configured:
 

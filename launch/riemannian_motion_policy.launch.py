@@ -23,7 +23,7 @@ def generate_launch_description():
 
     # Execute the set_load.sh script
     set_load = ExecuteProcess(
-        cmd=['/home/andri/franka_ros2_ws/src/riemannian_motion_policy/launch/set_load.sh'],
+        cmd=['/home/lucas/franka_ros2_ws/src/riemannian_motion_policy/launch/set_load.sh'],
         output='screen',
     )
 

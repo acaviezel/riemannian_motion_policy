@@ -1,5 +1,6 @@
 # RMP Obstacle Avoidance
 obstacle_avoidance:
+  enabled: false
   eta_rep: 100.0  #if moving obstacle, eta_rep = 15.0
   mu_rep: 0.02    #if moving obstacle, mu_rep = 0.5
   eta_damp: 50.0
@@ -9,6 +10,7 @@ obstacle_avoidance:
 
 # RMP Attractor
 attractor:
+  enabled: true
   alpha_min: 0.001
   sigma_a: 0.005
   sigma_b: 0.008
@@ -19,16 +21,19 @@ attractor:
 
 # RMP Global Damping
 global_damping:
+  enabled: true
   k_damp: 300
   weight_damping: 1.0
 
 # RMP Velocity Limits
 velocity_limits:
+  enabled: true
   k_joint_velocity: 100.0
   weight_joint_velocity: 1.0
 
 # RMP Joint Limits
 joint_limits:
+  enabled: true
   kp_joint_limits: 1.0 #k_p
   kd_joint_limits: 2.0 #k_d
   metric_length_scale: 0.01 #l_m
@@ -40,7 +45,18 @@ joint_limits:
  
 # RMP C-space Target
 c_space_target:
+  enabled: true
   kp_c_space_target: [2, 2,2, 2, 2,2, 1] #k_p
   kd_c_space_target: [7, 7, 7, 7, 7, 7, 10] #k_d
   theta: 0.5 #theta
   weight_c_space_target: 0.25
+
+# RMP Force Controller (joint-space, external torque driven)
+force_controller:
+  enabled: true
+  low_torque_threshold: 1.0
+  high_torque_threshold: 5.0
+  max_inertia: 5.0
+  sigmoid_steepness: 10.0
+  damping: 2.0
+  weight_force_controller: 1.0

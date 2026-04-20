@@ -109,6 +109,7 @@ public:
     void rmp_joint_limit_avoidance();
     void rmp_joint_velocity_limits();
     void rmp_cspacetarget();
+    void rmp_force_controller();
     void get_ddq();
     void updateJointStates();
     void update_stiffness_and_references();
@@ -131,10 +132,12 @@ public:
     Eigen::Matrix<double, 7, 7> M;
     std::array<double, 7> q_subscribed;
     std::array<double, 7> tau_J_d = {0,0,0,0,0,0,0};
+    std::array<double, 7> tau_ext_hat_filtered = {0,0,0,0,0,0,0};
     std::array<double, 6> O_F_ext_hat_K = {0,0,0,0,0,0};
     Eigen::Matrix<double, 7, 1> q_subscribed_M;
     Eigen::Matrix<double, 6, 7> jacobian;
     Eigen::Matrix<double, 7, 1> tau_J_d_M = Eigen::MatrixXd::Zero(7, 1);
+    Eigen::Matrix<double, 7, 1> tau_ext_hat_filtered_M = Eigen::MatrixXd::Zero(7,1);
     Eigen::Matrix<double, 6, 1> O_F_ext_hat_K_M = Eigen::MatrixXd::Zero(6,1);
     Eigen::Matrix<double, 7, 1> q_;
     Eigen::Matrix<double, 7, 1> dq_;
@@ -308,6 +311,9 @@ public:
 
     Eigen::VectorXd f_c_space_target = Eigen::VectorXd::Zero(7);
     Eigen::Matrix<double, 7, 7> A_c_space_target = Eigen::MatrixXd::Zero(7,7);
+
+    Eigen::VectorXd f_force_controller = Eigen::VectorXd::Zero(7);
+    Eigen::Matrix<double, 7, 7> A_force_controller = Eigen::MatrixXd::Zero(7,7);
     
     Eigen::VectorXd eigenValues = Eigen::VectorXd::Zero(3);
     Eigen::MatrixXd eigenVectors = Eigen::MatrixXd::Zero(3,3);
@@ -355,6 +361,23 @@ public:
     Eigen::Matrix <double, 7, 7> kd_c_space_target = Eigen::MatrixXd::Zero(7,7);
     double theta_cspace;
     double weight_c_space_target;
+
+    // Force controller parameters
+    double force_controller_low_torque_threshold;
+    double force_controller_high_torque_threshold;
+    double force_controller_max_inertia;
+    double force_controller_sigmoid_steepness;
+    double force_controller_damping;
+    double weight_force_controller;
+
+    // Primitive switches
+    bool use_obstacle_avoidance = true;
+    bool use_attractor = true;
+    bool use_global_damping = true;
+    bool use_joint_velocity_limits = true;
+    bool use_joint_limits = true;
+    bool use_c_space_target = true;
+    bool use_force_controller = true;
 
     Eigen::Vector3d sphere_center = (Eigen::VectorXd(3) << 0.3, 0.0, 0.5).finished();
     double sphere_radius = 0.1;
